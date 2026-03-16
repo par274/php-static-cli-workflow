@@ -1,0 +1,292 @@
+name: Build Static PHP binaries
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * 0"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-static-php-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x64
+            spc_url_suffix: linux-x86_64.tar.gz
+            artifact_os: linux
+            artifact_arch: x64
+
+          - os: ubuntu-24.04-arm
+            label: linux-arm64
+            spc_url_suffix: linux-aarch64.tar.gz
+            artifact_os: linux
+            artifact_arch: arm64
+
+          - os: macos-13
+            label: macos-x64
+            spc_url_suffix: macos-x86_64.tar.gz
+            artifact_os: mac
+            artifact_arch: x64
+
+          - os: macos-latest
+            label: macos-arm64
+            spc_url_suffix: macos-aarch64.tar.gz
+            artifact_os: mac
+            artifact_arch: arm64
+
+          - os: windows-latest
+            label: windows-x64
+            spc_url_suffix: windows-x64.exe
+            artifact_os: win
+            artifact_arch: x64
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Setup system PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.3
+          tools: composer
+          extensions: mbstring, json, openssl
+          ini-values: memory_limit=-1
+
+      - name: Read build config
+        id: cfg
+        run: |
+          ruby -e '
+            require "yaml"
+            cfg = YAML.load_file("config.yml")
+
+            php_version = cfg.fetch("php-version").to_s
+            spc_version = cfg.fetch("spc-version").to_s
+            extensions  = Array(cfg["extensions"]).join(",")
+            libraries   = Array(cfg["libraries"]).join(",")
+            base_name   = cfg.fetch("package", {}).fetch("base-name", "static-php").to_s
+            cacert_path = cfg.fetch("package", {}).fetch("cacert-path", "cacert.pem").to_s
+            include_ca  = cfg.fetch("package", {}).fetch("include-cacert", true) ? "true" : "false"
+
+            File.open(ENV["GITHUB_OUTPUT"], "a") do |f|
+              f.puts "php_version=#{php_version}"
+              f.puts "spc_version=#{spc_version}"
+              f.puts "extensions=#{extensions}"
+              f.puts "libraries=#{libraries}"
+              f.puts "base_name=#{base_name}"
+              f.puts "cacert_path=#{cacert_path}"
+              f.puts "include_cacert=#{include_ca}"
+            end
+          '
+
+      - name: Set SPC variables
+        run: |
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            echo "SPC_BINARY=spc.exe" >> "$GITHUB_ENV"
+          else
+            echo "SPC_BINARY=spc" >> "$GITHUB_ENV"
+          fi
+
+          echo "SPC_URL=https://github.com/crazywhalecc/static-php-cli/releases/download/${{ steps.cfg.outputs.spc_version }}/spc-${{ matrix.spc_url_suffix }}" >> "$GITHUB_ENV"
+          echo "PACKAGE_NAME=${{ steps.cfg.outputs.base_name }}-php-${{ steps.cfg.outputs.php_version }}-${{ matrix.artifact_os }}-${{ matrix.artifact_arch }}" >> "$GITHUB_ENV"
+          echo "REPO_LICENSE_DIR=LICENSES/generated/${{ matrix.artifact_os }}-${{ matrix.artifact_arch }}" >> "$GITHUB_ENV"
+
+      - name: Download SPC
+        run: |
+          rm -rf static-php-cli
+          mkdir -p static-php-cli/bin
+          cd static-php-cli/bin
+
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            curl -fsSL -o "$SPC_BINARY" "$SPC_URL"
+          else
+            curl -fsSL -o "${SPC_BINARY}.tar.gz" "$SPC_URL"
+            tar -xzf "${SPC_BINARY}.tar.gz"
+          fi
+
+          chmod +x "$SPC_BINARY"
+
+      - name: Install macOS dependencies
+        if: contains(matrix.os, 'macos')
+        run: |
+          brew install automake gzip
+
+      - name: SPC doctor
+        run: |
+          cd static-php-cli
+          ./bin/${SPC_BINARY} doctor
+
+      - name: Cache SPC downloads
+        uses: actions/cache@v4
+        with:
+          path: static-php-cli/downloads
+          key: >-
+            spc-downloads-${{ runner.os }}-${{ matrix.artifact_arch }}-php${{ steps.cfg.outputs.php_version }}-${{ hashFiles('config.yml') }}
+
+      - name: Download sources
+        run: |
+          cd static-php-cli
+          ./bin/${SPC_BINARY} download \
+            --with-php=${{ steps.cfg.outputs.php_version }} \
+            --for-extensions "${{ steps.cfg.outputs.extensions }}" \
+            --prefer-pre-built
+
+      - name: Build PHP
+        run: |
+          cd static-php-cli
+          ./bin/${SPC_BINARY} build \
+            --with-php=${{ steps.cfg.outputs.php_version }} \
+            --build-cli \
+            "${{ steps.cfg.outputs.extensions }}" \
+            --with-libs="${{ steps.cfg.outputs.libraries }}" \
+            --debug
+
+      - name: Read built PHP full version
+        id: built
+        run: |
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            PHP_VERSION_FULL=$(./static-php-cli/buildroot/bin/php.exe -r "echo PHP_VERSION;")
+          else
+            PHP_VERSION_FULL=$(./static-php-cli/buildroot/bin/php -r "echo PHP_VERSION;")
+          fi
+
+          echo "php_version_full=$PHP_VERSION_FULL" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare package directory
+        run: |
+          rm -rf package
+          mkdir -p package/bin
+          mkdir -p package/meta
+          mkdir -p package/LICENSES
+
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cp "./static-php-cli/buildroot/bin/php.exe" "./package/bin/php.exe"
+          else
+            cp "./static-php-cli/buildroot/bin/php" "./package/bin/php"
+            chmod +x "./package/bin/php"
+          fi
+
+          cp ./static-php-cli/buildroot/build-extensions.json ./package/meta/build-extensions.json
+          cp ./static-php-cli/buildroot/build-libraries.json ./package/meta/build-libraries.json
+
+          if compgen -G "./static-php-cli/buildroot/license/*" > /dev/null; then
+            cp -R ./static-php-cli/buildroot/license/. ./package/LICENSES/
+          fi
+
+      - name: Add cacert
+        if: steps.cfg.outputs.include_cacert == 'true'
+        run: |
+          test -f "${{ steps.cfg.outputs.cacert_path }}"
+          cp "${{ steps.cfg.outputs.cacert_path }}" "./package/cacert.pem"
+
+      - name: Generate php.ini with cacert
+        if: steps.cfg.outputs.include_cacert == 'true'
+        run: |
+          cat > ./package/php.ini <<'EOF'
+          [PHP]
+          expose_php=Off
+          memory_limit=512M
+          zend.assertions=-1
+
+          [curl]
+          curl.cainfo=cacert.pem
+
+          [openssl]
+          openssl.cafile=cacert.pem
+          EOF
+
+      - name: Generate php.ini without cacert
+        if: steps.cfg.outputs.include_cacert != 'true'
+        run: |
+          cat > ./package/php.ini <<'EOF'
+          [PHP]
+          expose_php=Off
+          memory_limit=512M
+          zend.assertions=-1
+          EOF
+
+      - name: Write package metadata
+        run: |
+          cat > ./package/meta/build-info.txt <<EOF
+          package=${PACKAGE_NAME}
+          php_version_requested=${{ steps.cfg.outputs.php_version }}
+          php_version_built=${{ steps.built.outputs.php_version_full }}
+          spc_version=${{ steps.cfg.outputs.spc_version }}
+          os=${{ matrix.artifact_os }}
+          arch=${{ matrix.artifact_arch }}
+          extensions=${{ steps.cfg.outputs.extensions }}
+          libraries=${{ steps.cfg.outputs.libraries }}
+          EOF
+
+      - name: Sync generated licenses into repository
+        run: |
+          rm -rf "${REPO_LICENSE_DIR}"
+          mkdir -p "${REPO_LICENSE_DIR}"
+
+          if compgen -G "./static-php-cli/buildroot/license/*" > /dev/null; then
+            cp -R ./static-php-cli/buildroot/license/. "${REPO_LICENSE_DIR}/"
+          fi
+
+          cat > "${REPO_LICENSE_DIR}/BUILD-INFO.txt" <<EOF
+          php_version_requested=${{ steps.cfg.outputs.php_version }}
+          php_version_built=${{ steps.built.outputs.php_version_full }}
+          spc_version=${{ steps.cfg.outputs.spc_version }}
+          os=${{ matrix.artifact_os }}
+          arch=${{ matrix.artifact_arch }}
+          extensions=${{ steps.cfg.outputs.extensions }}
+          libraries=${{ steps.cfg.outputs.libraries }}
+          generated_by=GitHub Actions
+          EOF
+
+      - name: Commit generated licenses to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add "${REPO_LICENSE_DIR}"
+
+          if git diff --cached --quiet; then
+            echo "No license changes to commit."
+            exit 0
+          fi
+
+          git pull --rebase origin main
+          git commit -m "chore(licenses): update generated licenses for ${{ matrix.artifact_os }}-${{ matrix.artifact_arch }}"
+          git push origin HEAD:main
+
+      - name: Create archive (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          cd package
+          zip -r "../${PACKAGE_NAME}.zip" .
+
+      - name: Create archive (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "package\*" -DestinationPath "${env:PACKAGE_NAME}.zip" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}
+          path: ${{ env.PACKAGE_NAME }}.zip
+          if-no-files-found: error
+          retention-days: 30
