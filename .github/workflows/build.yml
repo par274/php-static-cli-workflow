@@ -239,6 +239,16 @@ jobs:
             --with-libs="${{ steps.cfg.outputs.libraries }}" \
             --debug
 
+      - name: Fix zlib naming for Windows
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $libPath = "static-php-cli\buildroot\lib"
+          if (Test-Path "$libPath\z.lib") {
+            Copy-Item "$libPath\z.lib" "$libPath\zlib.lib" -Force
+            Copy-Item "$libPath\z.lib" "$libPath\zlib_a.lib" -Force
+          }
+
       - name: Build PHP (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
