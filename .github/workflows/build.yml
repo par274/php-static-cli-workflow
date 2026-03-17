@@ -33,7 +33,7 @@ jobs:
             artifact_os: linux
             artifact_arch: arm64
 
-          - os: macos-13
+          - os: macos-15-intel
             label: macos-x64
             spc_url_suffix: macos-x86_64.tar.gz
             artifact_os: mac
@@ -57,7 +57,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: main
@@ -125,8 +125,11 @@ jobs:
 
       - name: Install macOS dependencies
         if: contains(matrix.os, 'macos')
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: |
-          brew install automake gzip
+          command -v automake >/dev/null 2>&1 || brew install automake
 
       - name: SPC doctor
         run: |
@@ -134,7 +137,7 @@ jobs:
           ./bin/${SPC_BINARY} doctor
 
       - name: Cache SPC downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: static-php-cli/downloads
           key: >-
@@ -152,7 +155,6 @@ jobs:
         run: |
           cd static-php-cli
           ./bin/${SPC_BINARY} build \
-            --with-php=${{ steps.cfg.outputs.php_version }} \
             --build-cli \
             "${{ steps.cfg.outputs.extensions }}" \
             --with-libs="${{ steps.cfg.outputs.libraries }}" \
@@ -284,7 +286,7 @@ jobs:
           Compress-Archive -Path "package\*" -DestinationPath "${env:PACKAGE_NAME}.zip" -Force
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ env.PACKAGE_NAME }}
           path: ${{ env.PACKAGE_NAME }}.zip
