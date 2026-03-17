@@ -104,7 +104,7 @@ jobs:
         with:
           php-version: 8.3
           tools: composer
-          extensions: mbstring, json, openssl
+          extensions: curl, openssl, mbstring, sodium, tokenizer, filter
           ini-values: memory_limit=-1
 
       - name: Read build config
@@ -248,11 +248,6 @@ jobs:
             Copy-Item "$libPath\z.lib" "$libPath\zlib.lib" -Force
             Copy-Item "$libPath\z.lib" "$libPath\zlib_a.lib" -Force
           }
-          
-      - name: Enable Long Paths
-        shell: pwsh
-        run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1
 
       - name: Build PHP (Windows)
         if: matrix.os == 'windows-latest'
