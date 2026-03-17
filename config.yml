@@ -25,15 +25,27 @@ extensions:
     - xml
     - zip
     - zlib
-
   non_windows:
     - intl
 
 libraries:
+  - zlib
+  - bzip2
+  - openssl
+  - libssh2
+  - libiconv-win
+  - libxml2
+  - nghttp2
+  - curl
+  - libpng
+  - libavif
+  - libwebp
   - libjpeg
   - freetype
-  - libwebp
-  - libavif
+  - onig
+  - libsodium
+  - xz
+  - libzip
 
 sapi:
   - cli
