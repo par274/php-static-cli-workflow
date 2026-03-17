@@ -1,0 +1,8 @@
+php_version_requested=8.4
+php_version_built=8.4.19
+spc_version=2.8.2
+os=mac
+arch=x64
+extensions=bcmath,bz2,ctype,curl,dom,fileinfo,filter,gd,iconv,intl,mbstring,mbregex,opcache,openssl,phar,session,simplexml,sockets,sodium,tokenizer,xml,zip,zlib
+libraries=libjpeg,freetype,libwebp,libavif
+generated_by=GitHub Actions
