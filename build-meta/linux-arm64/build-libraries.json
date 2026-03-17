@@ -1,0 +1,21 @@
+[
+    "pkg-config",
+    "lib-base",
+    "micro",
+    "php",
+    "bzip2",
+    "zlib",
+    "openssl",
+    "libiconv",
+    "icu",
+    "libxml2",
+    "libsodium",
+    "curl",
+    "libpng",
+    "libwebp",
+    "libjpeg",
+    "freetype",
+    "onig",
+    "sqlite",
+    "libzip"
+]
