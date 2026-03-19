@@ -81,17 +81,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Set SPC binary name
+      - name: Set SPC binary name (Unix)
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: echo "SPC_BINARY=spc" >> $GITHUB_ENV
+
+      - name: Set SPC binary name (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: echo "SPC_BINARY=spc.exe" >> $GITHUB_ENV
 
       - name: Set SPC URL
         shell: bash
         run: |
           echo "SPC_URL=https://github.com/crazywhalecc/static-php-cli/releases/download/${{ needs.meta.outputs.spc_version }}/spc-${{ matrix.spc_url_suffix }}" >> $GITHUB_ENV
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            echo "SPC_BINARY=spc.exe" >> $GITHUB_ENV
-          fi
 
       - name: Setup system PHP
         uses: shivammathur/setup-php@v2
@@ -115,27 +118,33 @@ jobs:
             echo "ext_hash=$EXT_HASH"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Download SPC
+      - name: Download SPC (Unix)
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: |
           cd ..
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            curl -fsSL -o "${{ env.SPC_BINARY }}" "${{ env.SPC_URL }}"
-          else
-            curl -fsSL -o "${{ env.SPC_BINARY }}.tar.gz" "${{ env.SPC_URL }}"
-            tar -xzf "${{ env.SPC_BINARY }}.tar.gz"
-          fi
+          curl -fsSL -o spc.tar.gz "${{ env.SPC_URL }}"
+          tar -xzf spc.tar.gz
+          chmod +x spc
+          mkdir -p static-php-cli/bin
+          mv spc static-php-cli/bin/
 
-          chmod +x "${{ env.SPC_BINARY }}"
-          [ ! -d static-php-cli/bin ] && mkdir -p static-php-cli/bin
-          mv "${{ env.SPC_BINARY }}" static-php-cli/bin/
+      - name: Download SPC (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          cd ..
+          curl -fsSL -o spc.exe "${{ env.SPC_URL }}"
+          chmod +x spc.exe
+          mkdir -p static-php-cli/bin
+          mv spc.exe static-php-cli/bin/
 
       - name: Create working directories
         shell: bash
         run: |
           cd ..
-          [ ! -d php-bin ] && mkdir -p php-bin
-          [ ! -d static-php-cli/downloads ] && mkdir -p static-php-cli/downloads
+          mkdir -p php-bin
+          mkdir -p static-php-cli/downloads
 
       - name: Cache SPC downloads
         uses: actions/cache@v5
@@ -148,42 +157,42 @@ jobs:
         run: |
           cd ../static-php-cli
           ./bin/${{ env.SPC_BINARY }} doctor
-          cd ../php-bin
 
       - name: Download sources
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd ../static-php-cli
           ./bin/${{ env.SPC_BINARY }} download \
             --with-php=${{ needs.meta.outputs.php_version }} \
             --for-extensions "${{ steps.cfg.outputs.extensions }}" \
             --prefer-pre-built
-          cd ../php-bin
 
       - name: Build PHP
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd ../static-php-cli
           ./bin/${{ env.SPC_BINARY }} build \
             --build-cli "${{ steps.cfg.outputs.extensions }}" \
             --with-libs="${{ steps.cfg.outputs.libraries }}" \
             --debug
-          cd ../php-bin
 
-      - name: Prepare Package
+      - name: Prepare Package (Unix)
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: |
           mkdir -p package/bin package/meta package/LICENSES
-          EXE_EXT=""
-          [[ "${{ matrix.os }}" == "windows-latest" ]] && EXE_EXT=".exe"
+          cp ../static-php-cli/buildroot/bin/php package/bin/
+          cp ../static-php-cli/buildroot/build-*.json package/meta/ || true
+          [ -d ../static-php-cli/buildroot/license ] && cp -r ../static-php-cli/buildroot/license/* package/LICENSES/ || true
 
-          cp "../static-php-cli/buildroot/bin/php${EXE_EXT}" "package/bin/"
-          cp ../static-php-cli/buildroot/build-*.json package/meta/
-          [ -d "../static-php-cli/buildroot/license" ] && cp -r ../static-php-cli/buildroot/license/* package/LICENSES/ || true
+      - name: Prepare Package (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          mkdir -p package/bin package/meta package/LICENSES
+          cp ../static-php-cli/buildroot/bin/php.exe package/bin/
+          cp ../static-php-cli/buildroot/build-*.json package/meta/ || true
+          [ -d ../static-php-cli/buildroot/license ] && cp -r ../static-php-cli/buildroot/license/* package/LICENSES/ || true
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
@@ -211,7 +220,7 @@ jobs:
         with:
           path: tmp-artifacts
 
-      - name: Organize
+      - name: Organize and Push
         shell: bash
         run: |
           git config --global user.name "github-actions[bot]"
