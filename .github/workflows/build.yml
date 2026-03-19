@@ -97,8 +97,10 @@ jobs:
       - name: Download SPC
         shell: bash
         run: |
+          cd ..
           mkdir -p static-php-cli/bin
           SPC_URL="https://github.com/crazywhalecc/static-php-cli/releases/download/${{ needs.meta.outputs.spc_version }}/spc-${{ matrix.spc_url_suffix }}"
+
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             curl -fsSL -o "static-php-cli/bin/spc.exe" "$SPC_URL"
           else
@@ -110,7 +112,7 @@ jobs:
       - name: Cache SPC downloads
         uses: actions/cache@v5
         with:
-          path: static-php-cli/downloads
+          path: ../static-php-cli/downloads
           key: spc-downloads-${{ needs.meta.outputs.php_version }}-${{ steps.cfg.outputs.ext_hash }}-${{ runner.os }}-${{ matrix.artifact_arch }}
 
       - name: SPC doctor
@@ -126,7 +128,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd static-php-cli
+          cd ../static-php-cli
+          mkdir -p source/php-src downloads
+
           SPC="./bin/spc"
           [[ "${{ matrix.os }}" == "windows-latest" ]] && SPC="./bin/spc.exe"
 
@@ -140,7 +144,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd static-php-cli
+          cd ../static-php-cli
+          mkdir -p source/php-src
+
           SPC="./bin/spc"
           [[ "${{ matrix.os }}" == "windows-latest" ]] && SPC="./bin/spc.exe"
 
@@ -156,9 +162,9 @@ jobs:
           EXE_EXT=""
           [[ "${{ matrix.os }}" == "windows-latest" ]] && EXE_EXT=".exe"
 
-          cp "./static-php-cli/buildroot/bin/php${EXE_EXT}" "package/bin/"
-          cp ./static-php-cli/buildroot/build-*.json package/meta/
-          [ -d "./static-php-cli/buildroot/license" ] && cp -r ./static-php-cli/buildroot/license/* package/LICENSES/ || true
+          cp "../static-php-cli/buildroot/bin/php${EXE_EXT}" "package/bin/"
+          cp ../static-php-cli/buildroot/build-*.json package/meta/
+          [ -d "../static-php-cli/buildroot/license" ] && cp -r ../static-php-cli/buildroot/license/* package/LICENSES/ || true
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
