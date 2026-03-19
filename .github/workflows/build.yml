@@ -10,6 +10,10 @@ concurrency:
   group: build-static-php-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  SPC_DIR: ${{ github.workspace }}/../static-php-cli
+
 jobs:
   meta:
     name: Prepare build metadata
@@ -47,21 +51,25 @@ jobs:
             spc_url_suffix: linux-x86_64.tar.gz
             artifact_os: linux
             artifact_arch: x64
+
           - os: ubuntu-24.04-arm
             label: linux-arm64
             spc_url_suffix: linux-aarch64.tar.gz
             artifact_os: linux
             artifact_arch: arm64
+
           - os: macos-15-intel
             label: macos-x64
             spc_url_suffix: macos-x86_64.tar.gz
             artifact_os: mac
             artifact_arch: x64
+
           - os: macos-latest
             label: macos-arm64
             spc_url_suffix: macos-aarch64.tar.gz
             artifact_os: mac
             artifact_arch: arm64
+
           - os: windows-latest
             label: windows-x64
             spc_url_suffix: windows-x64.exe
@@ -94,41 +102,53 @@ jobs:
             echo "ext_hash=$EXT_HASH"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Debug paths
+        shell: bash
+        run: |
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          echo "SPC_DIR=$SPC_DIR"
+          pwd
+          ls -la
+          ls -la "$(dirname "$GITHUB_WORKSPACE")" || true
+
       - name: Download SPC
         shell: bash
         run: |
-          cd ..
-          mkdir -p static-php-cli/bin
+          mkdir -p "$SPC_DIR/bin"
           SPC_URL="https://github.com/crazywhalecc/static-php-cli/releases/download/${{ needs.meta.outputs.spc_version }}/spc-${{ matrix.spc_url_suffix }}"
 
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            curl -fsSL -o "static-php-cli/bin/spc.exe" "$SPC_URL"
+            curl -fsSL -o "$SPC_DIR/bin/spc.exe" "$SPC_URL"
           else
-            curl -fsSL -o "static-php-cli/bin/spc.tar.gz" "$SPC_URL"
-            tar -xzf "static-php-cli/bin/spc.tar.gz" -C static-php-cli/bin
-            chmod +x "static-php-cli/bin/spc"
+            curl -fsSL -o "$SPC_DIR/bin/spc.tar.gz" "$SPC_URL"
+            tar -xzf "$SPC_DIR/bin/spc.tar.gz" -C "$SPC_DIR/bin"
+            chmod +x "$SPC_DIR/bin/spc"
           fi
+
+      - name: Ensure SPC directories
+        shell: bash
+        run: |
+          mkdir -p "$SPC_DIR/source/php-src"
+          mkdir -p "$SPC_DIR/downloads"
 
       - name: Cache SPC downloads
         uses: actions/cache@v5
         with:
-          path: ../static-php-cli/downloads
+          path: ${{ env.SPC_DIR }}/downloads
           key: spc-downloads-${{ needs.meta.outputs.php_version }}-${{ steps.cfg.outputs.ext_hash }}-${{ runner.os }}-${{ matrix.artifact_arch }}
 
       - name: SPC doctor
         shell: bash
         run: |
-          cd static-php-cli
+          cd "$SPC_DIR"
           SPC="./bin/spc"
           [[ "${{ matrix.os }}" == "windows-latest" ]] && SPC="./bin/spc.exe"
           $SPC doctor
 
       - name: Download sources
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd ../static-php-cli
+          cd "$SPC_DIR"
           mkdir -p source/php-src downloads
 
           SPC="./bin/spc"
@@ -141,10 +161,8 @@ jobs:
 
       - name: Build PHP
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd ../static-php-cli
+          cd "$SPC_DIR"
           mkdir -p source/php-src
 
           SPC="./bin/spc"
@@ -162,9 +180,9 @@ jobs:
           EXE_EXT=""
           [[ "${{ matrix.os }}" == "windows-latest" ]] && EXE_EXT=".exe"
 
-          cp "../static-php-cli/buildroot/bin/php${EXE_EXT}" "package/bin/"
-          cp ../static-php-cli/buildroot/build-*.json package/meta/
-          [ -d "../static-php-cli/buildroot/license" ] && cp -r ../static-php-cli/buildroot/license/* package/LICENSES/ || true
+          cp "$SPC_DIR/buildroot/bin/php${EXE_EXT}" "package/bin/"
+          cp "$SPC_DIR"/buildroot/build-*.json package/meta/
+          [ -d "$SPC_DIR/buildroot/license" ] && cp -r "$SPC_DIR"/buildroot/license/* package/LICENSES/ || true
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
