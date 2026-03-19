@@ -1,0 +1,21 @@
+{
+    "name": "par274/php-bin",
+    "description": "PHP Static CLI workflow for desktop/mobile PHP apps",
+    "keywords": [
+        "php",
+        "static php"
+    ],
+    "license": [
+        "MIT"
+    ],
+    "authors": [
+        {
+            "name": "Par274",
+            "email": "parantezprojects@gmail.com",
+            "homepage": "https://github.com/par274",
+            "role": "Developer"
+        }
+    ],
+    "homepage": "https://github.com/par274/php-bin",
+    "minimum-stability": "dev"
+}
