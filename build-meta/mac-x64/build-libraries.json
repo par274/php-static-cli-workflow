@@ -14,8 +14,6 @@
     "libwebp",
     "libjpeg",
     "freetype",
-    "icu",
     "onig",
-    "sqlite",
     "libzip"
 ]

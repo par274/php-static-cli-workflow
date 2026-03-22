@@ -9,7 +9,6 @@
     "zlib",
     "gd",
     "iconv",
-    "intl",
     "mbstring",
     "mbregex",
     "opcache",
@@ -19,7 +18,6 @@
     "simplexml",
     "sockets",
     "sodium",
-    "sqlite3",
     "tokenizer",
     "xml",
     "zip"
