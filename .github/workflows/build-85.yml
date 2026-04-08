@@ -2,6 +2,9 @@ name: Static Build for PHP 8.5
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: write
