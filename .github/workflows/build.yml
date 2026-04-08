@@ -1,4 +1,4 @@
-name: Build Static PHP binaries
+name: Static Build for PHP 8.4
 
 on:
   workflow_dispatch:
